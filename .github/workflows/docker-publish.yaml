@@ -1,22 +1,60 @@
-name: Build and publish Docker image
+name: CI
 
-# When should this workflow run?
 on:
   push:
-    branches: [main]          # every push to main
-  workflow_dispatch:           # plus a manual "run now" button in the UI
+    branches: [main]
+  workflow_dispatch:
 
-# What does it need permission to do?
 permissions:
-  contents: read               # read the code
-  packages: write              # push to GHCR
+  contents: read
+  packages: write
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}    # e.g. "yourusername/shortener"
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: shortener
+          POSTGRES_USER: shortener
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U shortener"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=5
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        env:
+          DB_HOST: localhost
+          DB_NAME: shortener
+          DB_USER: shortener
+          DB_PASSWORD: changeme
+        run: pytest -v
+
   build-and-push:
+    needs: test         # only run if tests pass
     runs-on: ubuntu-latest
 
     steps:

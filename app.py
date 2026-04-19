@@ -92,6 +92,11 @@ def follow(code):
     return "Short URL not found", 404
 
 
-if __name__ == "__main__":
+def create_app():
+    """Application factory — lets tests create fresh app instances."""
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    return app
+
+
+if __name__ == "__main__":
+    create_app().run(host="0.0.0.0", port=5000, debug=True)
