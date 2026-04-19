@@ -42,7 +42,7 @@ def generate_code(length=6):
 FORM_HTML = """
 <!doctype html>
 <title>URL Shortener</title>
-<h1>URL Shortener</h1>
+<h1>URL Shortener :)</h1>
 <form method="post" action="/shorten">
     <input type="url" name="long_url" placeholder="https://example.com/very/long/url" required style="width:400px">
     <button type="submit">Shorten</button>
