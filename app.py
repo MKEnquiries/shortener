@@ -1,32 +1,44 @@
-from flask import Flask, request, redirect, render_template_string
-import sqlite3
+import os
 import string
 import random
+from flask import Flask, request, redirect, render_template_string
+import psycopg
+from psycopg.rows import tuple_row
 
 app = Flask(__name__)
-DB_PATH = "shortener.db"
+
+# Database connection parameters come from environment variables.
+# This is standard practice: configuration lives outside the code.
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": os.environ.get("DB_PORT", "5432"),
+    "dbname": os.environ.get("DB_NAME", "shortener"),
+    "user": os.environ.get("DB_USER", "shortener"),
+    "password": os.environ.get("DB_PASSWORD", "123"),
+}
+
+
+def get_conn():
+    """Open a new database connection."""
+    return psycopg.connect(**DB_CONFIG)
 
 
 def init_db():
     """Create the urls table if it doesn't exist yet."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS urls (
-            code TEXT PRIMARY KEY,
-            long_url TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS urls (
+                code TEXT PRIMARY KEY,
+                long_url TEXT NOT NULL
+            )
+        """)
 
 
 def generate_code(length=6):
-    """Generate a random short code like 'a3Bx9Z'."""
     chars = string.ascii_letters + string.digits
     return "".join(random.choices(chars, k=length))
 
 
-# Simple inline HTML — we'll move this to a proper template later
 FORM_HTML = """
 <!doctype html>
 <title>URL Shortener</title>
@@ -50,17 +62,19 @@ def home():
 def shorten():
     long_url = request.form["long_url"]
 
-    # Generate a unique code (retry if collision)
-    conn = sqlite3.connect(DB_PATH)
-    while True:
-        code = generate_code()
-        existing = conn.execute("SELECT 1 FROM urls WHERE code = ?", (code,)).fetchone()
-        if not existing:
-            break
+    with get_conn() as conn:
+        while True:
+            code = generate_code()
+            existing = conn.execute(
+                "SELECT 1 FROM urls WHERE code = %s", (code,)
+            ).fetchone()
+            if not existing:
+                break
 
-    conn.execute("INSERT INTO urls (code, long_url) VALUES (?, ?)", (code, long_url))
-    conn.commit()
-    conn.close()
+        conn.execute(
+            "INSERT INTO urls (code, long_url) VALUES (%s, %s)",
+            (code, long_url),
+        )
 
     short_url = request.host_url + code
     return render_template_string(FORM_HTML, short_url=short_url)
@@ -68,9 +82,10 @@ def shorten():
 
 @app.route("/<code>")
 def follow(code):
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute("SELECT long_url FROM urls WHERE code = ?", (code,)).fetchone()
-    conn.close()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT long_url FROM urls WHERE code = %s", (code,)
+        ).fetchone()
 
     if row:
         return redirect(row[0])
